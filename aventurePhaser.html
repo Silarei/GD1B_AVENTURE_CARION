@@ -9,11 +9,7 @@
     <body>
         <script type="text/javascript">
 
-            /*J'en profite pour m'excuser de la lisibilité du code, il en est encore qu'au début et il est déjà dégueulasse. Désolé.*/
-
-            //https://phaser.io/examples/v3/view/tilemap/collision/matter-platformer-with-wall-jumping
-
-            
+            //J'en profite pour m'excuser de la lisibilité du code, j'ai voulu utiliser matter plutôt qu'arcade et c'est partit en steack sur beaucoup de chose après coup :S
 
             class Scene1 extends Phaser.Scene {
                 constructor(){
@@ -21,11 +17,13 @@
                 }
 
                 preload () {
-                    this.load.image('ship', 'assets/sprites/star.png');
+                    this.load.spritesheet('ship', 'assets/sprites/pas.png', { frameWidth: 96, frameHeight: 96 });
+                    this.load.spritesheet('attack', 'assets/sprites/Attack.png', { frameWidth: 96, frameHeight: 96 });
                     this.load.image('bullet1', 'assets/sprites/bomb.png');
-                    this.load.image('sky', 'assets/sky.png');
-                    this.load.tilemapTiledJSON('map', 'assets/matter-platformer.json');
-                    this.load.image('kenney_redux_64x64', 'assets/kenney_redux_64x64.png');
+                    this.load.image('ennemy', 'assets/sprites/star.png');
+                    this.load.tilemapTiledJSON('map', 'assets/Carte_Nightclub.json');
+                    this.load.image('Tileset_Nightclub', 'assets/Tileset_Nightclub.png');
+                    this.load.spritesheet('HPBar', 'assets/sprites/HPBar.png', { frameWidth: 254, frameHeight: 254 });
                 }
 
                 create () {
@@ -35,12 +33,16 @@
                     this.isDown = false;
                     this.mouseX=0;
                     this.mouseY=0;
-                    this.add.image(400, 300, 'sky');
                     this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
                     this.playerController;
                     this.text;
                     this.cam;
                     this.smoothedControls;
+                    this.smoothedControlsV;
+                    this.immunityTimer = 100;
+                    var cat1 = this.matter.world.nextCategory();
+                    var cat2 = this.matter.world.nextCategory();
+                    var cat3 = this.matter.world.nextCategory();
                     
                     var Bullet = new Phaser.Class({
 
@@ -69,7 +71,7 @@
                             this.incX = Math.cos(angle);
                             this.incY = Math.sin(angle);
 
-                            this.lifespan = 1000;
+                            this.lifespan = 150;
                         },
 
                         update: function (time, delta) {
@@ -99,28 +101,14 @@
                     {
                         if (this.value > 0) { this.reset(); }
                         this.value -= this.msSpeed * delta;
-                        if (this.value < -1) { this.value = -1; }
-                    },
-
-                    moveUp: function (delta)
-                    {
-                        if (this.value < 0) { this.reset(); }
-                        this.value -= this.msSpeed * delta;
-                        if (this.value > 1) { this.value = 1;}
+                        if (this.value < -0.2) { this.value = -0.2; }
                     },
 
                     moveRight: function (delta)
                     {
                         if (this.value < 0) { this.reset(); }
                         this.value += this.msSpeed * delta;
-                        if (this.value > 1) { this.value = 1; }
-                    },
-
-                    moveDown: function (delta)
-                    {
-                        if (this.value > 0) { this.reset(); }
-                        this.value += this.msSpeed * delta;
-                        if (this.value < -1) { this.value = -1; }
+                        if (this.value > 0.2) { this.value = 0.2; }
                     },
 
                     reset: function ()
@@ -129,15 +117,47 @@
                     }
                 });
 
+                    var SmoothedVerticalControl = new Phaser.Class({
+                    initialize:
+
+                    function SmoothedVerticalControl (speed)
+                    {
+                        this.msSpeed = speed;
+                        this.value = 0;
+                    },
+
+                    moveUp: function (delta)
+                    {
+                        if (this.value < 0) { this.reset(); }
+                        this.value += this.msSpeed * delta;
+                        if (this.value > 0.2) { this.value = 0.2;}
+                    },
+
+                    moveDown: function (delta)
+                    {
+                        if (this.value > 0) { this.reset(); }
+                        this.value -= this.msSpeed * delta;
+                        if (this.value < -0.2) { this.value = -0.2; }
+                    },
+
+                    reset: function ()
+                    {
+                        this.value = 0;
+                    },
+                });
+
                     this.bullets = this.add.group({
                         classType: Bullet,
                         maxSize: 50,
                         runChildUpdate: true
+
                     });
                     
                     this.map = this.make.tilemap({ key: 'map' });
-                    this.tileset = this.map.addTilesetImage('kenney_redux_64x64');
-                    this.layer = this.map.createLayer(0, this.tileset, 0, 0);
+                    this.tileset = this.map.addTilesetImage('Tileset_Nightclub');
+                    this.groundLayer = this.map.createLayer('Ground', this.tileset, 0, 0);
+                    this.layer = this.map.createLayer('Other', this.tileset, 0, 0);
+                    this.enemy = this.matter.add.image(830,1000,'ennemy', 0)
 
                     // Set up the layer to have matter bodies. Any colliding tiles will be given a Matter body.
                     this.map.setCollisionByProperty({ collides: true });
@@ -147,11 +167,13 @@
                     this.matter.world.createDebugGraphic();
                     this.matter.world.drawDebug = false;
 
-                    this.smoothedControls = new SmoothedHorizontalControl(0.0005);
+                    this.smoothedControls = new SmoothedHorizontalControl(0.005);
+                    this.smoothedControlsV = new SmoothedVerticalControl(0.0005);
 
                     // The player is a collection of bodies and sensors
                     this.playerController = {
                         matterSprite: this.matter.add.sprite(0, 0, 'ship', 0),
+                        attackSprite: this.matter.add.sprite(0, 0, 'attack', 0),
                         blocked: {
                             left: false,
                             right: false,
@@ -184,12 +206,6 @@
                     this.w = this.playerController.matterSprite.width;
                     this.h = this.playerController.matterSprite.height;
 
-                    // The player's body is going to be a compound body:
-                    //  - playerBody is the solid body that will physically interact with the world. It has a
-                    //    chamfer (rounded edges) to avoid the problem of ghost vertices: http://www.iforce2d.net/b2dtut/ghost-vertices
-                    //  - Left/right/bottom sensors that will not interact physically but will allow us to check if
-                    //    the player is standing on solid ground or pushed up against a solid object.
-
                     // Move the sensor to player center
                     this.sx = this.w / 2;
                     this.sy = this.h / 2;
@@ -205,20 +221,35 @@
                             this.playerController.sensors.right
                         ],
                         friction: 0.01,
-                        restitution: 0.05 // Prevent body from sticking against a wall
+                        maxVelocity: 1,
+                        restitution: 0.1 // Prevent body from sticking against a wall
                     });
 
                     this.playerController.matterSprite
                         .setExistingBody(this.compoundBody)
-                        .setFixedRotation() // Sets max inertia to prevent rotation
-                        .setPosition(630, 1000);
+                        .setPosition(128, 1088);
+
+                    this.playerController.attackSprite
+                        .setExistingBody(this.compoundBody)
+                        .setPosition(128, 1088);
+
 
                     this.cam = this.cameras.main;
                     this.cam.setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
                     smoothMoveCameraTowards(this.playerController.matterSprite, this.cam);
 
-                    // Use matter events to detect whether the player is touching a surface to the left, right or
-                    // bottom.
+                    this.anims.create({
+                        key: 'left',
+                        frames: this.anims.generateFrameNumbers('ship', { start: 0, end: 6 }),
+                        frameRate: 10,
+                        repeat: -1
+                    });
+                    this.anims.create({
+                        key: 'attack',
+                        frames: this.anims.generateFrameNumbers('attack', { start: 0, end: 3 }),
+                        frameRate: 10,
+                        repeat: 0
+                    });
 
                     // Before matter's update, reset the player's count of what surfaces it is touching.
                     this.matter.world.on('beforeupdate', (function (event) {
@@ -228,8 +259,7 @@
                     }).bind(this));
 
                     // Loop over the active colliding pairs and count the surfaces the player is touching.
-                    this.matter.world.on('collisionactive', (function (event)
-                    {
+                    this.matter.world.on('collisionactive', (function (event) {
                         this.playerBody = this.playerController.body;
                         this.left = this.playerController.sensors.left;
                         this.right = this.playerController.sensors.right;
@@ -261,6 +291,7 @@
                             }
                         }
                     }).bind(this));
+                    
 
                     // Update over, so now we can determine if any direction is blocked
                     this.matter.world.on('afterupdate', (function (event) {
@@ -270,12 +301,7 @@
                         this.playerController.blocked.up = this.playerController.numTouching.up > 0 ? true : false;
                     }).bind(this));
 
-                    this.input.on('pointerdown', function () {
-                        this.matter.world.drawDebug = !this.matter.world.drawDebug;
-                        this.matter.world.debugGraphic.visible = this.matter.world.drawDebug;
-                    }, this);
-
-                    this.text = this.add.text(16, 16, '', {
+                    this.text = this.add.text(512, 512, '', {
                         fontSize: '20px',
                         padding: { x: 20, y: 10 },
                         backgroundColor: '#ffffff',
@@ -284,18 +310,24 @@
                     this.text.setScrollFactor(0);
                     updateText(this.text);
 
+                    this.HPBar = this.add.sprite(128, 128, 'HPBar', 0);
+                    this.HPBar.setScrollFactor(0);
+
+
+
                     this.input.on('pointerdown', pointer =>  {
 
                         this.isDown = true;
-                        this.mouseX = pointer.x;
-                        this.mouseY = pointer.y;
+                        this.mouseX = pointer.worldX;
+                        this.mouseY = pointer.worldY;
+                        this.playerController.attackSprite.anims.play('attack', true);
 
                     });
 
                     this.input.on('pointermove', pointer =>  {
 
-                        this.mouseX = pointer.x;
-                        this.mouseY = pointer.y;
+                        this.mouseX = pointer.worldX;
+                        this.mouseY = pointer.worldY;
 
                     });
 
@@ -304,6 +336,17 @@
                         this.isDown = false;
 
                     });
+                    this.playerController.matterSprite.setCollisionCategory(cat2);
+                    this.enemy.setCollisionCategory(cat2);
+
+                    this.matter.world.on('collisionstart', (function (event) {
+                        console.log('prout');
+                        if (invincible == false){
+                            invincible = true;
+                            health -= 1;
+                            this.playerController.matterSprite.setTint(0xff0000);
+                        }
+                    }).bind(this));
                 }
 
                 update (time, delta) {
@@ -311,15 +354,25 @@
                     if (this.isDown && time > this.lastFired) {
                         this.bullet = this.bullets.get();
 
-                        if (this.bullet) {
+                        if (this.bullet) {                            
                             this.bullet.fire(this.playerController.matterSprite, this.mouseX, this.mouseY);
+                            
 
                             this.lastFired = time + 500;
                         }
                     }
+
                     this.matterSprite = this.playerController.matterSprite;
+                    this.attackSprite = this.playerController.attackSprite;
 
                     this.matterSprite.setRotation(Phaser.Math.Angle.Between(this.mouseX, this.mouseY, this.matterSprite.x, this.matterSprite.y) - Math.PI / 2);
+                    this.attackSprite.setRotation(Phaser.Math.Angle.Between(this.mouseX, this.mouseY, this.attackSprite.x, this.attackSprite.y) - Math.PI / 2);
+
+
+                    if (this.matterSprite.x > 2200) {
+                        this.scene.start('MyScene');
+                    }
+
 
                     // Movement
 
@@ -333,6 +386,7 @@
                     if (this.cursors.left.isDown && !this.playerController.blocked.left)
                     {
                         this.smoothedControls.moveLeft(delta);
+                        this.matterSprite.anims.play('left', true);
 
                         // Lerp the velocity towards the max run using the smoothed controls. This simulates a
                         // player controlled acceleration.
@@ -345,6 +399,7 @@
                     else if (this.cursors.right.isDown && !this.playerController.blocked.right)
                     {
                         this.smoothedControls.moveRight(delta);
+                        this.matterSprite.anims.play('left', true);
 
                         // Lerp the velocity towards the max run using the smoothed controls. This simulates a
                         // player controlled acceleration.
@@ -354,37 +409,82 @@
 
                         this.matterSprite.setVelocityX(this.newVelocityX);
                     }
-                    else if (this.cursors.up.isDown && !this.playerController.blocked.up)
-                    {
-                        this.smoothedControls.moveUp(delta);
-
-                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
-                        // player controlled acceleration.
-                        this.oldVelocityY = this.matterSprite.body.velocity.y;
-                        this.targetVelocityY = this.playerController.speed.run;
-                        this.newVelocityY = Phaser.Math.Linear(this.oldVelocityY, this.targetVelocityY, this.smoothedControls.value);
-
-                        this.matterSprite.setVelocityY(this.newVelocityY);
-                    }
-                    else if (this.cursors.down.isDown && !this.playerController.blocked.bottom)
-                    {
-                        this.smoothedControls.moveDown(delta);
-
-                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
-                        // player controlled acceleration.
-                        this.oldVelocityY = this.matterSprite.body.velocity.y;
-                        this.targetVelocityY = -this.playerController.speed.run;
-                        this.newVelocityY = Phaser.Math.Linear(this.oldVelocityY, this.targetVelocityY, -this.smoothedControls.value);
-
-                        this.matterSprite.setVelocityY(this.newVelocityY);
-                    }
                     else
                     {
                         this.smoothedControls.reset();
                     }
 
+                    if (this.cursors.down.isDown && !this.playerController.blocked.bottom)
+                    {
+                        this.smoothedControlsV.moveUp(delta);
+                        this.matterSprite.anims.play('left', true);
+                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
+                        // player controlled acceleration.
+                        this.oldVelocityY = this.matterSprite.body.velocity.y;
+                        this.targetVelocityY = this.playerController.speed.run;
+                        this.newVelocityY = Phaser.Math.Linear(this.oldVelocityY, this.targetVelocityY, this.smoothedControlsV.value);
+
+                        this.matterSprite.setVelocityY(this.newVelocityY);
+                    }
+                    else if (this.cursors.up.isDown && !this.playerController.blocked.up)
+                    {
+                        this.smoothedControlsV.moveDown(delta);
+                        this.matterSprite.anims.play('left', true);
+                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
+                        // player controlled acceleration.
+                        this.oldVelocityY = this.matterSprite.body.velocity.y;
+                        this.targetVelocityY = -this.playerController.speed.run;
+                        this.newVelocityY = Phaser.Math.Linear(this.oldVelocityY, this.targetVelocityY, -this.smoothedControlsV.value);
+
+                        this.matterSprite.setVelocityY(this.newVelocityY);
+                    }
+                    else
+                    {
+                        this.smoothedControlsV.reset();
+                    }
+
+                    if (!this.cursors.up.isDown && !this.cursors.down.isDown && !this.cursors.left.isDown && !this.cursors.right.isDown) {
+                        this.matterSprite.anims.play('left', false);
+                    }
+
+                    if (this.spaceKey.isDown) {
+                        if (this.text.alpha == 1) {
+                            this.text.setAlpha(0);
+                        }
+                        else {
+                            this.text.setAlpha(1);
+                        }
+                    }
+
+                    if(invincible){
+                        this.immunityTimer -=1 ;
+                        if(this.immunityTimer == 0){
+                            this.immunityTimer = 100;
+                            this.playerController.matterSprite.setTint(0xffffff);
+                            invincible = false ;
+                        }
+                    }
+
                     smoothMoveCameraTowards(this.matterSprite, this.cam, 0.9);
                     updateText(this.text);
+                    if (this.enemy.x == this.matterSprite.x) {
+                        this.enemy.setVelocityX(0)
+                    }
+                    else if (this.enemy.x < this.matterSprite.x) {
+                        this.enemy.setVelocityX(1)
+                    }
+                    else if (this.enemy.x > this.matterSprite.x) {
+                        this.enemy.setVelocityX(-1)
+                    }
+                    if (this.enemy.y == this.matterSprite.y) {
+                        this.enemy.setVelocityY(0)
+                    }
+                    if (this.enemy.y < this.matterSprite.y) {
+                        this.enemy.setVelocityY(1)
+                    }
+                    if (this.enemy.y > this.matterSprite.y && this.enemy.y != this.matterSprite.y) {
+                        this.enemy.setVelocityY(-1)
+                    }
                 }
             }
 
@@ -432,162 +532,484 @@
                 constructor(){
                     super({key : "MyScene" });
                 }
-                
-                preload(){
-                    this.load.image('sky', 'assets/sky.png');
-                    this.load.image('ground', 'assets/platform.png');
-                    this.load.image('star', 'assets/star.png');
-                    this.load.image('bomb', 'assets/bomb.png');
-                    this.load.spritesheet('dude', 'assets/dude.png', { frameWidth: 32, frameHeight: 48 });
+
+                preload () {
+                    this.load.spritesheet('ship', 'assets/sprites/pas.png', { frameWidth: 96, frameHeight: 96 });
+                    this.load.spritesheet('attack', 'assets/sprites/Attack.png', { frameWidth: 96, frameHeight: 96 });
+                    this.load.image('bullet1', 'assets/sprites/bomb.png');
+                    this.load.image('ennemy', 'assets/sprites/star.png');
+                    this.load.tilemapTiledJSON('map', 'assets/Carte_Nightclub.json');
+                    this.load.image('Tileset_Nightclub', 'assets/Tileset_Nightclub.png');
+                    this.load.spritesheet('HPBar', 'assets/sprites/HPBar.png', { frameWidth: 254, frameHeight: 254 });
                 }
-                create(){
-                    this.gameOver = false;
-                    //  A simple background for our game
-                    this.add.image(400, 300, 'sky');
 
-                    //  The platforms group contains the ground and the 2 ledges we can jump on
-                    this.platforms = this.physics.add.staticGroup();
+                create () {
+                    this.cursors = this.input.keyboard.createCursorKeys();
+                    this.speed = Phaser.Math.GetSpeed(300, 1);
+                    this.lastFired = 0;
+                    this.isDown = false;
+                    this.mouseX=0;
+                    this.mouseY=0;
+                    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                    this.playerController;
+                    this.text;
+                    this.cam;
+                    this.smoothedControls;
+                    this.smoothedControlsV;
+                    this.immunityTimer = 100;
+                    var cat1 = this.matter.world.nextCategory();
+                    var cat2 = this.matter.world.nextCategory();
+                    var cat3 = this.matter.world.nextCategory();
+                    
+                    var Bullet = new Phaser.Class({
 
-                    //  Here we create the ground.
-                    //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
-                    this.platforms.create(400, 568, 'ground').setScale(2).refreshBody();
+                        Extends: Phaser.GameObjects.Image,
+                        initialize:
 
-                    //  Now let's create some ledges
-                    this.platforms.create(600, 400, 'ground');
-                    this.platforms.create(50, 250, 'ground');
-                    this.platforms.create(750, 220, 'ground');
+                        function Bullet (scene) {
+                            Phaser.GameObjects.Image.call(this, scene, 0, 0, 'bullet1');
 
-                    // The player and its settings
-                    this.ship = this.physics.add.sprite(100, 450, 'dude');
+                            this.incX = 0;
+                            this.incY = 0;
+                            this.lifespan = 0;
 
-                    //  Player physics properties. Give the little guy a slight bounce.
-                    this.ship.setBounce(0.2);
-                    this.ship.setCollideWorldBounds(true);
+                            this.speed = Phaser.Math.GetSpeed(600, 1);
+                        },
 
-                    //  Our player animations, turning, walking left and walking right.
+                        fire: function (ship, x, y) {
+                            this.setActive(true);
+                            this.setVisible(true);
+                            this.setPosition(ship.x, ship.y);
+
+                            var angle = Phaser.Math.Angle.Between(x, y, ship.x, ship.y);
+
+                            this.setRotation(angle);
+
+                            this.incX = Math.cos(angle);
+                            this.incY = Math.sin(angle);
+
+                            this.lifespan = 150;
+                        },
+
+                        update: function (time, delta) {
+                            this.lifespan -= delta;
+
+                            this.x -= this.incX * (this.speed * delta);
+                            this.y -= this.incY * (this.speed * delta);
+
+                            if (this.lifespan <= 0) {
+                                this.setActive(false);
+                                this.setVisible(false);
+                            }
+                        }
+
+                    });
+
+                    var SmoothedHorizontalControl = new Phaser.Class({
+                    initialize:
+
+                    function SmoothedHorizontalControl (speed)
+                    {
+                        this.msSpeed = speed;
+                        this.value = 0;
+                    },
+
+                    moveLeft: function (delta)
+                    {
+                        if (this.value > 0) { this.reset(); }
+                        this.value -= this.msSpeed * delta;
+                        if (this.value < -0.2) { this.value = -0.2; }
+                    },
+
+                    moveRight: function (delta)
+                    {
+                        if (this.value < 0) { this.reset(); }
+                        this.value += this.msSpeed * delta;
+                        if (this.value > 0.2) { this.value = 0.2; }
+                    },
+
+                    reset: function ()
+                    {
+                        this.value = 0;
+                    }
+                });
+
+                    var SmoothedVerticalControl = new Phaser.Class({
+                    initialize:
+
+                    function SmoothedVerticalControl (speed)
+                    {
+                        this.msSpeed = speed;
+                        this.value = 0;
+                    },
+
+                    moveUp: function (delta)
+                    {
+                        if (this.value < 0) { this.reset(); }
+                        this.value += this.msSpeed * delta;
+                        if (this.value > 0.2) { this.value = 0.2;}
+                    },
+
+                    moveDown: function (delta)
+                    {
+                        if (this.value > 0) { this.reset(); }
+                        this.value -= this.msSpeed * delta;
+                        if (this.value < -0.2) { this.value = -0.2; }
+                    },
+
+                    reset: function ()
+                    {
+                        this.value = 0;
+                    },
+                });
+
+                    this.bullets = this.add.group({
+                        classType: Bullet,
+                        maxSize: 50,
+                        runChildUpdate: true
+
+                    });
+                    
+                    this.map = this.make.tilemap({ key: 'map' });
+                    this.tileset = this.map.addTilesetImage('Tileset_Nightclub');
+                    this.groundLayer = this.map.createLayer('Ground', this.tileset, 0, 0);
+                    this.layer = this.map.createLayer('Other', this.tileset, 0, 0);
+                    this.enemy = this.matter.add.image(830,1000,'ennemy', 0)
+
+                    // Set up the layer to have matter bodies. Any colliding tiles will be given a Matter body.
+                    this.map.setCollisionByProperty({ collides: true });
+                    this.matter.world.convertTilemapLayer(this.layer);
+
+                    this.matter.world.setBounds(this.map.widthInPixels, this.map.heightInPixels);
+                    this.matter.world.createDebugGraphic();
+                    this.matter.world.drawDebug = false;
+
+                    this.smoothedControls = new SmoothedHorizontalControl(0.005);
+                    this.smoothedControlsV = new SmoothedVerticalControl(0.0005);
+
+                    // The player is a collection of bodies and sensors
+                    this.playerController = {
+                        matterSprite: this.matter.add.sprite(0, 0, 'ship', 0),
+                        attackSprite: this.matter.add.sprite(0, 0, 'attack', 0),
+                        blocked: {
+                            left: false,
+                            right: false,
+                            bottom: false,
+                            up: false
+                        },
+                        numTouching: {
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            up: 0
+                        },
+                        sensors: {
+                            bottom: null,
+                            left: null,
+                            right: null,
+                            up: null
+                        },
+                        time: {
+                            leftDown: 0,
+                            rightDown: 0
+                        },
+                        lastJumpedAt: 0,
+                        speed: {
+                            run: 5
+                        }
+                    };
+
+                    this.M = Phaser.Physics.Matter.Matter;
+                    this.w = this.playerController.matterSprite.width;
+                    this.h = this.playerController.matterSprite.height;
+
+                    // Move the sensor to player center
+                    this.sx = this.w / 2;
+                    this.sy = this.h / 2;
+
+                    // The player's body is going to be a compound body.
+                    this.playerBody = this.M.Bodies.rectangle(this.sx, this.sy, this.w * 0.75, this.h, { chamfer: { radius: 10 } });
+                    this.playerController.sensors.bottom = this.M.Bodies.rectangle(this.sx, this.h, this.sx, 5, { isSensor: true });
+                    this.playerController.sensors.left = this.M.Bodies.rectangle(this.sx - this.w * 0.45, this.sy, 5, this.h * 0.25, { isSensor: true });
+                    this.playerController.sensors.right = this.M.Bodies.rectangle(this.sx + this.w * 0.45, this.sy, 5, this.h * 0.25, { isSensor: true });
+                    this.compoundBody = this.M.Body.create({
+                        parts: [
+                            this.playerBody, this.playerController.sensors.bottom, this.playerController.sensors.left,
+                            this.playerController.sensors.right
+                        ],
+                        friction: 0.01,
+                        maxVelocity: 1,
+                        restitution: 0.1 // Prevent body from sticking against a wall
+                    });
+
+                    this.playerController.matterSprite
+                        .setExistingBody(this.compoundBody)
+                        .setPosition(128, 1088);
+
+                    this.playerController.attackSprite
+                        .setExistingBody(this.compoundBody)
+                        .setPosition(128, 1088);
+
+
+                    this.cam = this.cameras.main;
+                    this.cam.setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
+                    smoothMoveCameraTowards(this.playerController.matterSprite, this.cam);
+
                     this.anims.create({
                         key: 'left',
-                        frames: this.anims.generateFrameNumbers('dude', { start: 0, end: 3 }),
+                        frames: this.anims.generateFrameNumbers('ship', { start: 0, end: 6 }),
                         frameRate: 10,
                         repeat: -1
                     });
-
                     this.anims.create({
-                        key: 'turn',
-                        frames: [ { key: 'dude', frame: 4 } ],
-                        frameRate: 20
-                    });
-
-                    this.anims.create({
-                        key: 'right',
-                        frames: this.anims.generateFrameNumbers('dude', { start: 5, end: 8 }),
+                        key: 'attack',
+                        frames: this.anims.generateFrameNumbers('attack', { start: 0, end: 3 }),
                         frameRate: 10,
-                        repeat: -1
+                        repeat: 0
                     });
 
-                    //  Input Events
-                    this.cursors = this.input.keyboard.createCursorKeys();
+                    // Before matter's update, reset the player's count of what surfaces it is touching.
+                    this.matter.world.on('beforeupdate', (function (event) {
+                        this.playerController.numTouching.left = 0;
+                        this.playerController.numTouching.right = 0;
+                        this.playerController.numTouching.bottom = 0;
+                    }).bind(this));
 
-                    //  Some stars to collect, 12 in total, evenly spaced 70 pixels apart along the x axis
-                    this.stars = this.physics.add.group({
-                        key: 'star',
-                        repeat: 11,
-                        setXY: { x: 12, y: 0, stepX: 70 }
+                    // Loop over the active colliding pairs and count the surfaces the player is touching.
+                    this.matter.world.on('collisionactive', (function (event) {
+                        this.playerBody = this.playerController.body;
+                        this.left = this.playerController.sensors.left;
+                        this.right = this.playerController.sensors.right;
+                        this.bottom = this.playerController.sensors.bottom;
+
+                        for (this.i = 0; this.i < event.pairs.length; this.i++)
+                        {
+                            this.bodyA = event.pairs[this.i].bodyA;
+                            this.bodyB = event.pairs[this.i].bodyB;
+
+                            if (this.bodyA === this.playerBody || this.bodyB === this.playerBody)
+                            {
+                                continue;
+                            }
+                            else if (this.bodyA === this.bottom || this.bodyB === this.bottom)
+                            {
+                                // Standing on any surface counts (e.g. jumping off of a non-static crate).
+                                this.playerController.numTouching.bottom += 1;
+                            }
+                            else if ((this.bodyA === this.left && this.bodyB.isStatic) || (this.bodyB === this.left && this.bodyA.isStatic))
+                            {
+                                // Only static objects count since we don't want to be blocked by an object that we
+                                // can push around.
+                                this.playerController.numTouching.left += 1;
+                            }
+                            else if ((this.bodyA === this.right && this.bodyB.isStatic) || (this.bodyB === this.right && this.bodyA.isStatic))
+                            {
+                                this.playerController.numTouching.right += 1;
+                            }
+                        }
+                    }).bind(this));
+                    
+
+                    // Update over, so now we can determine if any direction is blocked
+                    this.matter.world.on('afterupdate', (function (event) {
+                        this.playerController.blocked.right = this.playerController.numTouching.right > 0 ? true : false;
+                        this.playerController.blocked.left = this.playerController.numTouching.left > 0 ? true : false;
+                        this.playerController.blocked.bottom = this.playerController.numTouching.bottom > 0 ? true : false;
+                        this.playerController.blocked.up = this.playerController.numTouching.up > 0 ? true : false;
+                    }).bind(this));
+
+                    this.text = this.add.text(512, 512, '', {
+                        fontSize: '20px',
+                        padding: { x: 20, y: 10 },
+                        backgroundColor: '#ffffff',
+                        fill: '#000000'
+                    });
+                    this.text.setScrollFactor(0);
+                    updateText(this.text);
+
+                    this.HPBar = this.add.sprite(128, 128, 'HPBar', 0);
+                    this.HPBar.setScrollFactor(0);
+
+
+
+                    this.input.on('pointerdown', pointer =>  {
+
+                        this.isDown = true;
+                        this.mouseX = pointer.worldX;
+                        this.mouseY = pointer.worldY;
+                        this.playerController.attackSprite.anims.play('attack', true);
+
                     });
 
-                    this.stars.children.iterate(function (child) {
+                    this.input.on('pointermove', pointer =>  {
 
-                        //  Give each star a slightly different bounce
-                        child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+                        this.mouseX = pointer.worldX;
+                        this.mouseY = pointer.worldY;
 
                     });
 
-                    this.bombs = this.physics.add.group();
+                    this.input.on('pointerup', pointer =>  {
 
-                    //  The score
-                    this.scoreText = this.add.text(16, 16, 'score: 0', { fontSize: '32px', fill: '#000' });
+                        this.isDown = false;
 
-                    //  Collide the player and the stars with the platforms
-                    this.physics.add.collider(this.player, this.platforms);
-                    this.physics.add.collider(this.stars, this.platforms);
-                    this.physics.add.collider(this.bombs, this.platforms);
+                    });
+                    this.playerController.matterSprite.setCollisionCategory(cat2);
+                    this.enemy.setCollisionCategory(cat2);
 
-                    //  Checks to see if the player overlaps with any of the stars, if he does call the collectStar function
-                    this.physics.add.overlap(this.player, this.stars, this.collectStar, null, this);
-
-                    this.physics.add.collider(this.player, this.bombs, hitBomb, null, this);
+                    this.matter.world.on('collisionstart', (function (event) {
+                        console.log('prout');
+                        if (invincible == false){
+                            invincible = true;
+                            health -= 1;
+                            this.playerController.matterSprite.setTint(0xff0000);
+                        }
+                    }).bind(this));
                 }
-                
-                update(){
-                    if (this.gameOver)
-                    {
-                        return;
+
+                update (time, delta) {
+
+                    if (this.isDown && time > this.lastFired) {
+                        this.bullet = this.bullets.get();
+
+                        if (this.bullet) {                            
+                            this.bullet.fire(this.playerController.matterSprite, this.mouseX, this.mouseY);
+                            
+
+                            this.lastFired = time + 500;
+                        }
                     }
 
-                    if (this.cursors.left.isDown)
-                    {
-                        this.player.setVelocityX(-160);
+                    this.matterSprite = this.playerController.matterSprite;
+                    this.attackSprite = this.playerController.attackSprite;
 
-                        this.player.anims.play('left', true);
+                    this.matterSprite.setRotation(Phaser.Math.Angle.Between(this.mouseX, this.mouseY, this.matterSprite.x, this.matterSprite.y) - Math.PI / 2);
+                    this.attackSprite.setRotation(Phaser.Math.Angle.Between(this.mouseX, this.mouseY, this.attackSprite.x, this.attackSprite.y) - Math.PI / 2);
+
+                    // Movement
+
+                    this.oldVelocityX;
+                    this.targetVelocityX;
+                    this.newVelocityX;
+                    this.oldVelocityY;
+                    this.targetVelocityY;
+                    this.newVelocityY;
+
+                    if (this.cursors.left.isDown && !this.playerController.blocked.left)
+                    {
+                        this.smoothedControls.moveLeft(delta);
+                        this.matterSprite.anims.play('left', true);
+
+                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
+                        // player controlled acceleration.
+                        this.oldVelocityX = this.matterSprite.body.velocity.x;
+                        this.targetVelocityX = -this.playerController.speed.run;
+                        this.newVelocityX = Phaser.Math.Linear(this.oldVelocityX, this.targetVelocityX, -this.smoothedControls.value);
+
+                        this.matterSprite.setVelocityX(this.newVelocityX);
                     }
-                    else if (this.cursors.right.isDown)
+                    else if (this.cursors.right.isDown && !this.playerController.blocked.right)
                     {
-                        this.player.setVelocityX(160);
+                        this.smoothedControls.moveRight(delta);
+                        this.matterSprite.anims.play('left', true);
 
-                        this.player.anims.play('right', true);
+                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
+                        // player controlled acceleration.
+                        this.oldVelocityX = this.matterSprite.body.velocity.x;
+                        this.targetVelocityX = this.playerController.speed.run;
+                        this.newVelocityX = Phaser.Math.Linear(this.oldVelocityX, this.targetVelocityX, this.smoothedControls.value);
+
+                        this.matterSprite.setVelocityX(this.newVelocityX);
                     }
                     else
                     {
-                        this.player.setVelocityX(0);
-
-                        this.player.anims.play('turn');
+                        this.smoothedControls.reset();
                     }
 
-                    if (this.cursors.up.isDown && this.player.body.touching.down)
+                    if (this.cursors.down.isDown && !this.playerController.blocked.bottom)
                     {
-                        this.player.setVelocityY(-330);
+                        this.smoothedControlsV.moveUp(delta);
+                        this.matterSprite.anims.play('left', true);
+                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
+                        // player controlled acceleration.
+                        this.oldVelocityY = this.matterSprite.body.velocity.y;
+                        this.targetVelocityY = this.playerController.speed.run;
+                        this.newVelocityY = Phaser.Math.Linear(this.oldVelocityY, this.targetVelocityY, this.smoothedControlsV.value);
+
+                        this.matterSprite.setVelocityY(this.newVelocityY);
+                    }
+                    else if (this.cursors.up.isDown && !this.playerController.blocked.up)
+                    {
+                        this.smoothedControlsV.moveDown(delta);
+                        this.matterSprite.anims.play('left', true);
+                        // Lerp the velocity towards the max run using the smoothed controls. This simulates a
+                        // player controlled acceleration.
+                        this.oldVelocityY = this.matterSprite.body.velocity.y;
+                        this.targetVelocityY = -this.playerController.speed.run;
+                        this.newVelocityY = Phaser.Math.Linear(this.oldVelocityY, this.targetVelocityY, -this.smoothedControlsV.value);
+
+                        this.matterSprite.setVelocityY(this.newVelocityY);
+                    }
+                    else
+                    {
+                        this.smoothedControlsV.reset();
+                    }
+
+                    if (!this.cursors.up.isDown && !this.cursors.down.isDown && !this.cursors.left.isDown && !this.cursors.right.isDown) {
+                        this.matterSprite.anims.play('left', false);
+                    }
+
+                    if (this.spaceKey.isDown) {
+                        if (this.text.alpha == 1) {
+                            this.text.setAlpha(0);
+                        }
+                        else {
+                            this.text.setAlpha(1);
+                        }
+                    }
+
+                    if(invincible){
+                        this.immunityTimer -=1 ;
+                        if(this.immunityTimer == 0){
+                            this.immunityTimer = 100;
+                            this.playerController.matterSprite.setTint(0xffffff);
+                            invincible = false ;
+                        }
+                    }
+
+                    smoothMoveCameraTowards(this.matterSprite, this.cam, 0.9);
+                    updateText(this.text);
+                    if (this.enemy.x == this.matterSprite.x) {
+                        this.enemy.setVelocityX(0)
+                    }
+                    else if (this.enemy.x < this.matterSprite.x) {
+                        this.enemy.setVelocityX(1)
+                    }
+                    else if (this.enemy.x > this.matterSprite.x) {
+                        this.enemy.setVelocityX(-1)
+                    }
+                    if (this.enemy.y == this.matterSprite.y) {
+                        this.enemy.setVelocityY(0)
+                    }
+                    if (this.enemy.y < this.matterSprite.y) {
+                        this.enemy.setVelocityY(1)
+                    }
+                    if (this.enemy.y > this.matterSprite.y && this.enemy.y != this.matterSprite.y) {
+                        this.enemy.setVelocityY(-1)
                     }
                 }
-
-                collectStar (player, star)
-                {
-                    star.disableBody(true, true);
-
-                    //  Add and update the score
-                    player.scene.score += 10;
-                    player.scene.scoreText.setText('Score: ' + player.scene.score);
-
-                    if (player.scene.stars.countActive(true) === 0)
-                    {
-                        //  A new batch of stars to collect
-                        player.scene.stars.children.iterate(function (child) {
-
-                            child.enableBody(true, child.x, 0, true, true);
-
-                        });
-
-                        var x = (player.x < 400) ? Phaser.Math.Between(400, 800) : Phaser.Math.Between(0, 400);
-
-                        var bomb = this.bombs.create(x, 16, 'bomb');
-                        bomb.setBounce(1);
-                        bomb.setCollideWorldBounds(true);
-                        bomb.setVelocity(Phaser.Math.Between(-200, 200), 20);
-
-                    }
-                }
-
             }
+
 
             var config = {
                 type: Phaser.WEBGL,
-                width: 1200,
-                height: 900,
+                width: screen.width,
+                height: screen.height,
                 physics: {
                     default: 'matter',
                     matter: {
                         gravity: { y: 0 },
                         enableSleep: false,
-                        debug: false
+                        debug: true
                     }
                 },
                 backgroundColor: '#2d2d2d',
@@ -595,23 +1017,12 @@
                 scene: [ Scene1 , MyScene ]
             };
 
-            function hitBomb (player, bomb)
-            {
-                this.physics.pause();
-
-                player.setTint(0xff0000);
-
-                player.anims.play('turn');
-
-                player.scene.gameOver = true;
-            }
-
             function updateText (text)
                 {
                     text.setText([
-                        'Arrow keys to move. Press "Up" to jump.',
-                        'You can wall jump!',
-                        'Click to toggle rendering Matter debug.'
+                        'Arrow keys to move.',
+                        'Click to attack.',
+                        'Space to make this dissapear.'
                         // 'Debug:',
                         // '\tBottom blocked: ' + playerController.blocked.bottom,
                         // '\tLeft blocked: ' + playerController.blocked.left,
@@ -619,13 +1030,18 @@
                     ]);
                 }
 
-                function smoothMoveCameraTowards (target, cam, smoothFactor)
+            function smoothMoveCameraTowards (target, cam, smoothFactor)
                 {
                     if (smoothFactor === undefined) { smoothFactor = 0; }
                     cam.scrollX = smoothFactor * cam.scrollX + (1 - smoothFactor) * (target.x - cam.width * 0.5);
                     cam.scrollY = smoothFactor * cam.scrollY + (1 - smoothFactor) * (target.y - cam.height * 0.5);
                 }
 
+            
+            
+
+            var invincible = false;
+            var health = 4;
             var game = new Phaser.Game(config);
         </script>
     </body>
